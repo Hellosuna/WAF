@@ -71,6 +71,7 @@
 #include "llvm/Support/xxhash.h"
 #include <optional>
 
+
 using namespace clang;
 using namespace CodeGen;
 
@@ -7256,13 +7257,56 @@ void CodeGenModule::EmitStructDroppedFunc(RecordDecl *RD) {
   builder.SetInsertPoint(if_else_block);
 
   // dropped_offset = 4*idx;
-  llvm::Value *dropped_offset = builder.CreateMul(
-      dropped_func->getArg(1), builder.getInt32(4), "dropped_offset");
+  // llvm::Value *dropped_offset = builder.CreateMul(
+  //     dropped_func->getArg(1), builder.getInt32(4), "dropped_offset");
+
+  // accumulate offset
+
+  // clang::RecordDecl
+  // llvm::outs() << "直接获取结构体名称：" << RD->getNameAsString() << "\n";
+
+  // for(auto it = RD->field_begin(); it != RD->field_end(); ++it){
+  //   QualType field_type = it->getType();
+  //   llvm::outs() << "获取字段类型：" << field_type.getAsString() << "\n";
+  // }
+  int idx = Ty->getNumElements();
+  llvm::Type* intType = llvm::IntegerType::get(context, 32);
+  llvm::ArrayType *arrayType = llvm::ArrayType::get(intType, idx);
+  std::vector<llvm::Constant*> constantVector(idx);
+
+
+  // int field_idx = 0;
+  // for(FieldDecl *FD : RD->fields()){
+  //   QualType field_type = FD->getType();
+  //   constantVector[field_idx++] = llvm::ConstantInt::get(intType,field_idx);
+  //   llvm::outs() << "Filed Type: " << field_type.getAsString() << "\n";
+  // }
+  // llvm::Constant* arrayConstant = llvm::ConstantArray::get(llvm::ArrayType::get(intType,3), constantVector);
+  // llvm::GlobalVariable *globalArray = new llvm::GlobalVariable(getModule(), arrayType, false, llvm::GlobalValue::CommonLinkage, arrayConstant, RD->getNameAsString() + "Array");
+
+  llvm::DataLayout dataLayout(&getModule());
+  getModule().setDataLayout(dataLayout.getStringRepresentation());
+  const llvm::StructLayout* structLayout= dataLayout.getStructLayout(Ty);
+  for(int i=0; i<idx; ++i){
+    unsigned offset = structLayout->getElementOffset(i);
+    unsigned size = dataLayout.getTypeStoreSize(Ty->getElementType(i));
+    llvm::outs() << "Filed: " << i << ":\n";
+    llvm::outs() << "Offset: " << offset << " \n";
+    llvm::outs() << "Size: " << size << " bytes\n";
+    constantVector[i] = llvm::ConstantInt::get(intType,offset);
+  }
+  llvm::Constant* arrayConstant = llvm::ConstantArray::get(llvm::ArrayType::get(intType,3), constantVector);
+  llvm::GlobalVariable *globalArray = new llvm::GlobalVariable(getModule(), arrayType, false, llvm::GlobalValue::CommonLinkage, arrayConstant, RD->getNameAsString() + "Array");
+  llvm::Value *index = builder.CreateSub(dropped_func->getArg(1), builder.getInt32(1), "index");
+  llvm::Value *offset = builder.CreateInBoundsGEP(intType, globalArray, index);
+
   // new_ptr = ptr + dropped_offset;
-  llvm::Value *new_ptr_i32 =
-      builder.CreateAdd(ptr_i32, dropped_offset, "new_ptr_i32");
+  // llvm::Value *new_ptr_i32 =
+  //     builder.CreateAdd(ptr_i32, dropped_offset, "new_ptr_i32");
+  llvm::Value *new_ptr_i32_2 =
+      builder.CreateAdd(ptr_i32, offset, "new_ptr_i32");
   llvm::Value *new_ptr =
-      builder.CreateIntToPtr(new_ptr_i32, builder.getPtrTy(), "new_ptr");
+      builder.CreateIntToPtr(new_ptr_i32_2, builder.getPtrTy(), "new_ptr");
 
   // Value *new_offset = builder.getInt32(0);
   //  return new_offset
