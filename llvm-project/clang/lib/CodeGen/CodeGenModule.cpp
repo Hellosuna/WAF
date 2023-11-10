@@ -7216,7 +7216,62 @@ void CodeGenModule::moveLazyEmissionStates(CodeGenModule *NewBuilder) {
   NewBuilder->ABI->MangleCtx = std::move(ABI->MangleCtx);
 }
 
+// RecordDecl *
+
+std::vector<unsigned> genNativeOffsetWithLong64(RecordDecl *RD, CodeGenTypes &Types){
+  clang::ASTContext &context = RD->getASTContext();
+  for(auto it = RD->field_begin(); it != RD->field_end(); ++it){
+    QualType field_qual_type = it->getType().getCanonicalType().getUnqualifiedType();
+    const Type *field_type = it->getType().getTypePtr();
+
+    if(field_type->isIntegerType() && field_qual_type.getAsString() == "long"){
+      QualType longIntType = context.getIntTypeForBitwidth(64,1);
+      it->setType(longIntType);
+    }
+  }
+  llvm::DataLayout dataLayout("e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128");  // x86-64
+  llvm::StructType *Ty = Types.ConvertRecordDeclType(RD);
+  const llvm::StructLayout* structLayout= dataLayout.getStructLayout(Ty);
+  int idx = Ty->getNumElements();
+  std::vector<unsigned> offset(idx);
+  for(int i=0; i<idx; ++i){
+    offset[i] = structLayout->getElementOffset(i);
+  }
+  return offset;
+}
+
+RecordDecl deepCloneRecordDecl(Record *RD){
+
+}
+
+std::vector<unsigned> genNativeOffsetWithLong32(RecordDecl *RD, CodeGenTypes &Types){
+  // 如果不改变 wasm 中 long 的位数，则需要拷贝一份 RD，不能在原始 AST 上修改
+  // 如果无法拷贝，则先设置位 64 位 long，并标记字段，然后再还原
+  clang::ASTContext &context = RD->getASTContext();
+  for(auto it = RD->field_begin(); it != RD->field_end(); ++it){
+    QualType field_qual_type = it->getType().getCanonicalType().getUnqualifiedType();
+    const Type *field_type = it->getType().getTypePtr();
+
+    if(field_type->isIntegerType() && field_qual_type.getAsString() == "long"){
+      QualType longIntType = context.getIntTypeForBitwidth(64,1);
+      it->setType(longIntType);
+    }
+  }
+  llvm::DataLayout dataLayout("e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128");  // x86-64
+  llvm::StructType *Ty = Types.ConvertRecordDeclType(RD);
+  const llvm::StructLayout* structLayout= dataLayout.getStructLayout(Ty);
+  int idx = Ty->getNumElements();
+  std::vector<unsigned> offset(idx);
+  for(int i=0; i<idx; ++i){
+    offset[i] = structLayout->getElementOffset(i);
+  }
+  return offset;
+}
+
 void CodeGenModule::EmitStructDroppedFunc(RecordDecl *RD) {
+  std::vector<unsigned> nativeOffset = genNativeOffsetWithLong64(RD, Types);
+  auto &ASTcontext = getContext();
+ 
   llvm::StructType *Ty = Types.ConvertRecordDeclType(RD);
   std::vector<llvm::Type *> func_parameters{this->Int8PtrTy, this->Int32Ty};
 
@@ -7246,7 +7301,7 @@ void CodeGenModule::EmitStructDroppedFunc(RecordDecl *RD) {
 
   // if (ptr > ptr_upper)
   llvm::Constant *ptr_upper = builder.getInt32(1 * 1024 * 1024 * 1024);
-  llvm::Value *condition = builder.CreateICmpSLT(ptr_i32, ptr_upper);
+  llvm::Value *condition = builder.CreateICmpULT(ptr_i32, ptr_upper);
   builder.CreateCondBr(condition, if_then_block, if_else_block);
 
   // return offset
@@ -7260,51 +7315,33 @@ void CodeGenModule::EmitStructDroppedFunc(RecordDecl *RD) {
   // llvm::Value *dropped_offset = builder.CreateMul(
   //     dropped_func->getArg(1), builder.getInt32(4), "dropped_offset");
 
-  // accumulate offset
 
-  // clang::RecordDecl
-  // llvm::outs() << "直接获取结构体名称：" << RD->getNameAsString() << "\n";
-
-  // for(auto it = RD->field_begin(); it != RD->field_end(); ++it){
-  //   QualType field_type = it->getType();
-  //   llvm::outs() << "获取字段类型：" << field_type.getAsString() << "\n";
-  // }
   int idx = Ty->getNumElements();
   llvm::Type* intType = llvm::IntegerType::get(context, 32);
   llvm::ArrayType *arrayType = llvm::ArrayType::get(intType, idx);
   std::vector<llvm::Constant*> constantVector(idx);
-
-
-  // int field_idx = 0;
-  // for(FieldDecl *FD : RD->fields()){
-  //   QualType field_type = FD->getType();
-  //   constantVector[field_idx++] = llvm::ConstantInt::get(intType,field_idx);
-  //   llvm::outs() << "Filed Type: " << field_type.getAsString() << "\n";
-  // }
-  // llvm::Constant* arrayConstant = llvm::ConstantArray::get(llvm::ArrayType::get(intType,3), constantVector);
-  // llvm::GlobalVariable *globalArray = new llvm::GlobalVariable(getModule(), arrayType, false, llvm::GlobalValue::CommonLinkage, arrayConstant, RD->getNameAsString() + "Array");
-
+  
+  // wasm32 data layout
   llvm::DataLayout dataLayout(&getModule());
-  getModule().setDataLayout(dataLayout.getStringRepresentation());
   const llvm::StructLayout* structLayout= dataLayout.getStructLayout(Ty);
+  std::vector<unsigned> wasmOffset(idx);
   for(int i=0; i<idx; ++i){
-    unsigned offset = structLayout->getElementOffset(i);
-    unsigned size = dataLayout.getTypeStoreSize(Ty->getElementType(i));
-    llvm::outs() << "Filed: " << i << ":\n";
-    llvm::outs() << "Offset: " << offset << " \n";
-    llvm::outs() << "Size: " << size << " bytes\n";
-    constantVector[i] = llvm::ConstantInt::get(intType,offset);
+    wasmOffset[i] = structLayout->getElementOffset(i);
+    constantVector[i] = llvm::ConstantInt::get(intType,nativeOffset[i]-wasmOffset[i]);
   }
   llvm::Constant* arrayConstant = llvm::ConstantArray::get(llvm::ArrayType::get(intType,3), constantVector);
-  llvm::GlobalVariable *globalArray = new llvm::GlobalVariable(getModule(), arrayType, false, llvm::GlobalValue::CommonLinkage, arrayConstant, RD->getNameAsString() + "Array");
-  llvm::Value *index = builder.CreateSub(dropped_func->getArg(1), builder.getInt32(1), "index");
-  llvm::Value *offset = builder.CreateInBoundsGEP(intType, globalArray, index);
+  llvm::GlobalVariable *globalArray = new llvm::GlobalVariable(getModule(), arrayType, false, llvm::GlobalValue::PrivateLinkage, arrayConstant, RD->getNameAsString() + "Array");
+
+  llvm::Value *offset = builder.CreateInBoundsGEP(intType, globalArray, dropped_func->getArg(1));
 
   // new_ptr = ptr + dropped_offset;
   // llvm::Value *new_ptr_i32 =
   //     builder.CreateAdd(ptr_i32, dropped_offset, "new_ptr_i32");
+  // builder.CreateLoad
   llvm::Value *new_ptr_i32_2 =
-      builder.CreateAdd(ptr_i32, offset, "new_ptr_i32");
+      builder.CreateAdd(ptr_i32, builder.CreateLoad(intType, offset, "loadIndex"), "new_ptr_i32");
+  // llvm::Value *new_ptr_i32_2 =
+  //     builder.CreateAdd(ptr_i32, builder.CreatePtrToInt(offset, builder.getInt32Ty()), "new_ptr_i32");
   llvm::Value *new_ptr =
       builder.CreateIntToPtr(new_ptr_i32_2, builder.getPtrTy(), "new_ptr");
 
