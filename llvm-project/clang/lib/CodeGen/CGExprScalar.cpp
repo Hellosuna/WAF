@@ -5266,7 +5266,28 @@ CodeGenFunction::EmitCheckedInBoundsGEP(llvm::Type *ElemTy, Value *Ptr,
                                         SourceLocation Loc, const Twine &Name) {
   llvm::Type *PtrTy = Ptr->getType();
   Value *GEPVal = Builder.CreateInBoundsGEP(ElemTy, Ptr, IdxList, Name);
-
+  if(ElemTy->isArrayTy()){
+      if(ElemTy->getArrayElementType()->isPointerTy()){
+        std::string func_name = "ptrArrayOffset";
+        llvm::Function *dropped_func =
+          this->get_dropped_function(func_name);
+        if (dropped_func != nullptr) {
+          std::array<llvm::Value *, 2> argv_array{GEPVal, IdxList[1]};
+          llvm::ArrayRef<llvm::Value *> argv(argv_array);
+          GEPVal = Builder.CreateCall(dropped_func->getFunctionType(), dropped_func, argv);
+        }
+      }
+     
+      if(ElemTy->getArrayElementType()->isStructTy()){
+        llvm::Function *dropped_func =
+          this->get_dropped_function(ElemTy->getArrayElementType()->getStructName().str()+"ArrayOffset");
+        if (dropped_func) {
+          std::array<llvm::Value *, 2> argv_array{GEPVal, IdxList[1]};
+          llvm::ArrayRef<llvm::Value *> argv(argv_array);
+          GEPVal = Builder.CreateCall(dropped_func->getFunctionType(), dropped_func, argv);
+        }
+      }
+  }
   // If the pointer overflow sanitizer isn't enabled, do nothing.
   if (!SanOpts.has(SanitizerKind::PointerOverflow))
     return GEPVal;

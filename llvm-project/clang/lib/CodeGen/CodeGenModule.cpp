@@ -7217,19 +7217,105 @@ void CodeGenModule::moveLazyEmissionStates(CodeGenModule *NewBuilder) {
 }
 
 // RecordDecl *
+void CodeGenModule::EmitArrayOffsetFunc(std::string name, int offset){
+  if(!this->get_dropped_function(name)){
+    std::vector<llvm::Type *> func_parameters{this->Int8PtrTy, this->Int32Ty};
 
-std::vector<unsigned> genNativeOffsetWithLong64(RecordDecl *RD, CodeGenTypes &Types){
-  clang::ASTContext &context = RD->getASTContext();
-  for(auto it = RD->field_begin(); it != RD->field_end(); ++it){
-    QualType field_qual_type = it->getType().getCanonicalType().getUnqualifiedType();
-    const Type *field_type = it->getType().getTypePtr();
+    llvm::FunctionType *function_type =
+        llvm::FunctionType::get(this->Int8PtrTy, func_parameters, false);
 
-    if(field_type->isIntegerType() && field_qual_type.getAsString() == "long"){
-      QualType longIntType = context.getIntTypeForBitwidth(64,1);
-      it->setType(longIntType);
-    }
+    llvm::Function *dropped_func = llvm::Function::Create(
+        function_type, llvm::GlobalValue::PrivateLinkage,
+        name, this->getModule());
+
+    dropped_func->getArg(0)->setName("ptr");
+    dropped_func->getArg(1)->setName("idx");
+    llvm::LLVMContext &context = dropped_func->getContext();
+    llvm::IRBuilder<> builder(context);
+
+    llvm::BasicBlock *init_block =
+        llvm::BasicBlock::Create(context, "init", dropped_func);
+    llvm::BasicBlock *if_then_block =
+        llvm::BasicBlock::Create(context, "if.then", dropped_func);
+    llvm::BasicBlock *if_else_block =
+        llvm::BasicBlock::Create(context, "if.else", dropped_func);
+
+    builder.SetInsertPoint(init_block);
+
+    llvm::Value *ptr_i32 = builder.CreatePtrToInt(
+        dropped_func->getArg(0), builder.getInt32Ty(), "ptr_i32");
+    
+    // if (ptr > ptr_upper)
+    llvm::Constant *ptr_upper = builder.getInt32(1 * 1024 * 1024 * 1024);
+    llvm::Value *condition = builder.CreateICmpULT(ptr_i32, ptr_upper);
+    builder.CreateCondBr(condition, if_then_block, if_else_block);
+
+    // return offset
+    builder.SetInsertPoint(if_then_block);
+    builder.CreateRet(dropped_func->getArg(0));
+
+    // else
+    builder.SetInsertPoint(if_else_block);
+
+    llvm::Type* intType = llvm::IntegerType::get(context, 32);
+    llvm::Constant* intValue = llvm::ConstantInt::get(intType, offset);
+    llvm::Value *res = builder.CreateAdd(ptr_i32, builder.CreateMul(dropped_func->getArg(1), intValue));
+
+    llvm::Value* ptr = builder.CreateIntToPtr(res, builder.getPtrTy());
+    builder.CreateRet(ptr);
+    this->insert_dropped_function(name, dropped_func);
   }
-  llvm::DataLayout dataLayout("e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128");  // x86-64
+}
+
+
+// TODO: recoverLongTo32() 
+// 结构体偏移用一个函数表示，函数中传递全局 int 数组
+// 数组偏移用一个函数表示，函数中传递全局 int 变量
+
+// 结构体是从嵌套最里曾开始处理，且包括匿名结构体，不需要递归
+// TODO: 判断 long 是否有符号
+void CodeGenModule::setLongTo64(RecordDecl *RD){
+  auto &context = RD->getASTContext();
+  QualType longIntType = context.getIntTypeForBitwidth(64,1);
+  llvm::outs() << RD->getNameAsString() << "\n";
+  for(auto it = RD->field_begin(); it != RD->field_end(); ++it){
+      QualType field_qual_type = it->getType().getCanonicalType().getUnqualifiedType();
+      const Type *field_type = it->getType().getTypePtr();
+      // TODO: 标记修改位置
+      if(field_type->isIntegerType() && field_qual_type.getAsString() == "long"){
+        it->setType(longIntType);
+        // long_sign.push_back(true);
+        // continue;
+      }else if(field_type->isUnionType()){
+        // Union 属于 Record，暂时不做处理
+      }else if(field_type->isEnumeralType()){
+        // 应该不需要处理
+      }else if(field_type->isArrayType()){
+        QualType element_qual_type = context.getBaseElementType(field_qual_type);
+        // const Type *element_type = element_qual_type.getTypePtr();
+        if(element_qual_type.getAsString() == "long"){
+          // 设置数组类型
+          const llvm::APInt &size = context.getAsConstantArrayType(field_qual_type)->getSize();
+          QualType newArrayType = context.getConstantArrayType(longIntType, size, nullptr, ArrayType::Normal, 0);
+          it->setType(newArrayType);
+        }else if(element_qual_type.getTypePtr()->isPointerType()){
+          llvm::outs() << "this is pointertype\n";
+          EmitArrayOffsetFunc("ptrArrayOffset", 4);
+        }
+        // else if(element_type->isRecordType()){
+        //   // 设置数组成员类型
+        //   setLongTo64(element_type->getAsRecordDecl());
+        // }
+      // }else if(field_type->isRecordType()){
+      //     setLongTo64(field_type->getAsRecordDecl());
+      }
+      // long_sign.push_back(false);
+    }
+}
+
+// TODO: explore ASTRecordLayout
+std::vector<unsigned> CodeGenModule::genFieldOffset(RecordDecl* RD, llvm::DataLayout dataLayout) {
+  // llvm::DataLayout dataLayout("e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128");  // x86-64
   llvm::StructType *Ty = Types.ConvertRecordDeclType(RD);
   const llvm::StructLayout* structLayout= dataLayout.getStructLayout(Ty);
   int idx = Ty->getNumElements();
@@ -7240,44 +7326,43 @@ std::vector<unsigned> genNativeOffsetWithLong64(RecordDecl *RD, CodeGenTypes &Ty
   return offset;
 }
 
-RecordDecl deepCloneRecordDecl(Record *RD){
-
-}
-
-std::vector<unsigned> genNativeOffsetWithLong32(RecordDecl *RD, CodeGenTypes &Types){
-  // 如果不改变 wasm 中 long 的位数，则需要拷贝一份 RD，不能在原始 AST 上修改
-  // 如果无法拷贝，则先设置位 64 位 long，并标记字段，然后再还原
-  clang::ASTContext &context = RD->getASTContext();
-  for(auto it = RD->field_begin(); it != RD->field_end(); ++it){
-    QualType field_qual_type = it->getType().getCanonicalType().getUnqualifiedType();
-    const Type *field_type = it->getType().getTypePtr();
-
-    if(field_type->isIntegerType() && field_qual_type.getAsString() == "long"){
-      QualType longIntType = context.getIntTypeForBitwidth(64,1);
-      it->setType(longIntType);
-    }
-  }
-  llvm::DataLayout dataLayout("e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128");  // x86-64
+int CodeGenModule::getRecordArrayOffset(RecordDecl* RD, llvm::DataLayout nativeDataLayout){
   llvm::StructType *Ty = Types.ConvertRecordDeclType(RD);
-  const llvm::StructLayout* structLayout= dataLayout.getStructLayout(Ty);
-  int idx = Ty->getNumElements();
-  std::vector<unsigned> offset(idx);
-  for(int i=0; i<idx; ++i){
-    offset[i] = structLayout->getElementOffset(i);
-  }
-  return offset;
+  const llvm::StructLayout* nativeStructLayout= nativeDataLayout.getStructLayout(Ty);
+  llvm::DataLayout moduleDataLayout(&getModule());
+  const llvm::StructLayout* moduleStructLayout = moduleDataLayout.getStructLayout(Ty);
+  return nativeStructLayout->getSizeInBytes() - moduleStructLayout->getSizeInBytes();
 }
 
+// void testASTRecordLayout(RecordDecl *RD){
+//   clang::ASTContext &context = RD->getASTContext();
+//   const ASTRecordLayout &AST_RL = context.getASTRecordLayout(RD);
+//   for(int i=0; i<AST_RL.getFieldCount(); ++i){
+//     llvm::outs() << AST_RL.getFieldOffset(i) << " ";
+//   }
+//   llvm::outs() << "\n";
+// }
+
+// TODO: 为匿名结构体生成偏移，需要指定一个全局名字：比如 anno 后 加上数字，但是在访问时怎么办，看能不能为设置名字
+// void 	setDeclName (DeclarationName N) ??
 void CodeGenModule::EmitStructDroppedFunc(RecordDecl *RD) {
-  std::vector<unsigned> nativeOffset = genNativeOffsetWithLong64(RD, Types);
-  auto &ASTcontext = getContext();
- 
-  llvm::StructType *Ty = Types.ConvertRecordDeclType(RD);
+  // testASTRecordLayout(RD);
+
+  setLongTo64(RD);
+  // EmitArrayOffsetFunc(RD->getNameAsString(), int offset)
+  llvm::DataLayout nativeDataLayout("e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128");  // x86-64
+  std::vector<unsigned> nativeOffset = genFieldOffset(RD, nativeDataLayout);
+  EmitArrayOffsetFunc("struct." + RD->getNameAsString() + "ArrayOffset", getRecordArrayOffset(RD, nativeDataLayout));
+
+  llvm::StructType *Ty = Types.ConvertRecordDeclType(RD);// 只能转一次，后面即使修改 RD，转换结果也不变，因为函数实现有缓存
+  // const ASTRecordLayout &AST_RL = context.getASTRecordLayout(RD); // getASTRecordLayout 返回的引用，应该也只算一次
+  // 需要自己构建 llvm::StructType* 类型
   std::vector<llvm::Type *> func_parameters{this->Int8PtrTy, this->Int32Ty};
 
   llvm::FunctionType *function_type =
       llvm::FunctionType::get(this->Int8PtrTy, func_parameters, false);
 
+  // 当前面 genFieldOffset 发生内存溢出时，总是在这里报错（非常奇怪，可能这个函数有对地址空间的判断）
   llvm::Function *dropped_func = llvm::Function::Create(
       function_type, llvm::GlobalValue::PrivateLinkage,
       Ty->getStructName().str() + "_dropped_func", this->getModule());
@@ -7315,7 +7400,6 @@ void CodeGenModule::EmitStructDroppedFunc(RecordDecl *RD) {
   // llvm::Value *dropped_offset = builder.CreateMul(
   //     dropped_func->getArg(1), builder.getInt32(4), "dropped_offset");
 
-
   int idx = Ty->getNumElements();
   llvm::Type* intType = llvm::IntegerType::get(context, 32);
   llvm::ArrayType *arrayType = llvm::ArrayType::get(intType, idx);
@@ -7323,14 +7407,15 @@ void CodeGenModule::EmitStructDroppedFunc(RecordDecl *RD) {
   
   // wasm32 data layout
   llvm::DataLayout dataLayout(&getModule());
-  const llvm::StructLayout* structLayout= dataLayout.getStructLayout(Ty);
+  const llvm::StructLayout* structLayout = dataLayout.getStructLayout(Ty);
+  
   std::vector<unsigned> wasmOffset(idx);
   for(int i=0; i<idx; ++i){
     wasmOffset[i] = structLayout->getElementOffset(i);
     constantVector[i] = llvm::ConstantInt::get(intType,nativeOffset[i]-wasmOffset[i]);
   }
   llvm::Constant* arrayConstant = llvm::ConstantArray::get(llvm::ArrayType::get(intType,3), constantVector);
-  llvm::GlobalVariable *globalArray = new llvm::GlobalVariable(getModule(), arrayType, false, llvm::GlobalValue::PrivateLinkage, arrayConstant, RD->getNameAsString() + "Array");
+  llvm::GlobalVariable *globalArray = new llvm::GlobalVariable(getModule(), arrayType, false, llvm::GlobalValue::PrivateLinkage, arrayConstant, RD->getNameAsString() + "Offset");
 
   llvm::Value *offset = builder.CreateInBoundsGEP(intType, globalArray, dropped_func->getArg(1));
 
@@ -7348,6 +7433,5 @@ void CodeGenModule::EmitStructDroppedFunc(RecordDecl *RD) {
   // Value *new_offset = builder.getInt32(0);
   //  return new_offset
   builder.CreateRet(new_ptr);
-
-  this->insert_dropped_function(Ty->getStructName(), dropped_func);
+  this->insert_dropped_function(Ty->getStructName().str(), dropped_func);
 }

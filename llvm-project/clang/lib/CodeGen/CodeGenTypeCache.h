@@ -83,12 +83,14 @@ struct CodeGenTypeCache {
   llvm::PointerType *ConstGlobalsPtrTy;
 
   std::unordered_map<std::string,llvm::Function *> dropped_functions;
-  void insert_dropped_function(llvm::StringRef name, llvm::Function *func) {
-    dropped_functions[name.str()]=func;
+  void insert_dropped_function(std::string name, llvm::Function *func) {
+    dropped_functions[name]=func;
   }
 
-  llvm::Function *get_dropped_function(const llvm::StringRef name) const  {
-    return dropped_functions.at(name.str());
+  llvm::Function *get_dropped_function(std::string name) const  {
+    if(dropped_functions.count(name))
+      return dropped_functions.at(name);
+    return nullptr;
   }
 
   /// The size and alignment of the builtin C type 'int'.  This comes

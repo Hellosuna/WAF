@@ -195,12 +195,13 @@ public:
     const llvm::DataLayout &DL = BB->getParent()->getParent()->getDataLayout();
     const llvm::StructLayout *Layout = DL.getStructLayout(ElTy);
     auto Offset = CharUnits::fromQuantity(Layout->getElementOffset(Index));
+
     /*return Address(
         CreateStructGEP(Addr.getElementType(), Addr.getPointer(), Index, Name),
         ElTy->getElementType(Index),
         Addr.getAlignment().alignmentAtOffset(Offset));*/
     llvm::Function *dropped_func =
-        TypeCache.get_dropped_function(ElTy->getName());
+        TypeCache.get_dropped_function(ElTy->getName().str());
     llvm::Value *ptr =
         CreateStructGEP(Addr.getElementType(), Addr.getPointer(), Index, Name);
     if (dropped_func) {
@@ -305,7 +306,7 @@ public:
   Address CreateConstInBoundsGEP2_32(Address Addr, unsigned Idx0, unsigned Idx1,
                                      const llvm::Twine &Name = "") {
     const llvm::DataLayout &DL = BB->getParent()->getParent()->getDataLayout();
-
+    
     auto *GEP = cast<llvm::GetElementPtrInst>(CreateConstInBoundsGEP2_32(
         Addr.getElementType(), Addr.getPointer(), Idx0, Idx1, Name));
     llvm::APInt Offset(

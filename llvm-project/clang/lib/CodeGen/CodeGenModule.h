@@ -1183,7 +1183,15 @@ public:
   // Make sure that this type is translated.
   void UpdateCompletedType(const TagDecl *TD);
 
+  void EmitArrayOffsetFunc(std::string name, int offset);
+
   void EmitStructDroppedFunc(RecordDecl *RD);
+
+  void setLongTo64(RecordDecl *RD);
+
+  std::vector<unsigned> genFieldOffset(RecordDecl *RD, llvm::DataLayout dataLayout);
+
+  int getRecordArrayOffset(RecordDecl *RD, llvm::DataLayout nativeDataLayout);
 
   llvm::Constant *getMemberPointerConstant(const UnaryOperator *e);
 
