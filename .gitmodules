@@ -1,0 +1,3 @@
+[submodule "wasm-micro-runtime"]
+	path = wasm-micro-runtime
+	url = https://gitee.com/Catoi-Song/wasm-micro-runtime.git
