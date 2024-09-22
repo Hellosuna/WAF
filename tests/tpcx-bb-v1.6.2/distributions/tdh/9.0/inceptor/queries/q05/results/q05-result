@@ -1,0 +1,5 @@
+Precision: 0.7843
+AUC: 0.8358
+Confusion Matrix:
+5580.0  598.0   
+1332.0  1436.0  

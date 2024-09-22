@@ -1,0 +1,5 @@
+table DArray {
+  values:[double];
+}
+
+root_type DArray;

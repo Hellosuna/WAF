@@ -1,0 +1,7 @@
+table FlatDate {
+    year:int32;
+    month:int32;
+    day:int32;
+}
+
+root_type FlatDate;

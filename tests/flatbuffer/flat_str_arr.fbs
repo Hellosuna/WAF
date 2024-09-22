@@ -1,0 +1,5 @@
+table FlatStrArr {
+  str_arr:[string];
+}
+
+root_type FlatStrArr;

@@ -1,0 +1,10 @@
+table Pair {
+  first:int64 ;
+  second:int64 ;
+}
+
+table PairArray {
+  pairs:[Pair];
+}
+
+root_type PairArray;

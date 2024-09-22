@@ -1,0 +1,5 @@
+table IntArray {
+  values:[int32];
+}
+
+root_type IntArray;

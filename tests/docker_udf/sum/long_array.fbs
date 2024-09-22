@@ -1,0 +1,5 @@
+table LongArray {
+  values:[int64];
+}
+
+root_type LongArray;

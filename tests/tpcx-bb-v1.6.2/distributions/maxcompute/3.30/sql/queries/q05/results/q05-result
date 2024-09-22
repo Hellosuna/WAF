@@ -1,0 +1,5 @@
+Precision: 0.784281
+AUC: 0.841068
+Confusion Matrix:
+5473	560
+1353	1482

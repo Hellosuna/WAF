@@ -1,0 +1,7 @@
+Precision: 0.8026
+AUC: 0.8360
+Recall: 0.9085
+F1-Score: 0.8522
+Confusion Matrix:
+5471.0  551.0   
+1346.0  1414.0  

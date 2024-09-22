@@ -1,0 +1,9 @@
+
+table YearMonthDay{
+    day:byte;
+    month:byte;
+    year:short;
+}
+
+
+root_type YearMonthDay;

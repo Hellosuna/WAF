@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+
+# Copyright 2015-2019 Intel Corporation.
+# This software and the related documents are Intel copyrighted materials, and your use of them 
+# is governed by the express license under which they were provided to you ("License"). Unless the 
+# License provides otherwise, you may not use, modify, copy, publish, distribute, disclose or 
+# transmit this software or the related documents without Intel's prior written permission.
+# 
+# This software and the related documents are provided as is, with no express or implied warranties, 
+# other than those that are expressly stated in the License.
+# 
+#
+
+
+helpModule () {
+  echo "This module runs the full benchmark using the java driver"
+  echo
+  echo "Options:"
+  echo -e "-d\tdatabase to use (default: $BIG_BENCH_DEFAULT_DATABASE)"
+  echo -e "-l\tplatform to use (default: $BIG_BENCH_DEFAULT_PLATFORM)"
+  echo -e "-e\tengine to use (default: $BIG_BENCH_DEFAULT_ENGINE)"
+  echo -e "-f\tscale factor for data set. -f 1 == 1GB -f 1000 == 1TB (default: $BIG_BENCH_DEFAULT_SCALE_FACTOR)"
+  echo -e "-h\tshow this help"
+  echo -e "-m\tmap tasks for data generation. A good value is: NUMBER_OF_YARN_CONTAINERS-1 or NUMBER_OF_CLUSTER_VCORES-1. This setting only influences the data generation and has nothing to do with query execution. (default: $BIG_BENCH_DEFAULT_MAP_TASKS)"
+  echo -e "-s\tnumber of parallel query streams in THROUGHPUT_TEST benchmark phase (default: $BIG_BENCH_DEFAULT_NUMBER_OF_PARALLEL_STREAMS)"
+  echo
+  echo -e "-a\tdry-run - pretend command execution but dont actually execute them"
+  echo -e "-b\tverbose - print stdout of called bash scripts during execution"
+  echo -e "-i\tphases the driver performs (see $BIG_BENCH_CONF_DIR/bigBench.properties for details on format)"
+  echo -e "-j\tqueries the driver runs (see $BIG_BENCH_CONF_DIR/bigBench.properties for details on format)"
+
+  if [ "$BIG_BENCH_EXPERT_MODE" -ne 0 ]
+  then
+    echo
+    echo "EXPERT MODE ACTIVE"
+    echo
+    echo "WARNING-INTERNAL USE ONLY:"
+    echo "Only set manually if you know what you are doing!"
+    echo -e "-v\tsql script for metastore population (default: $BIG_BENCH_POPULATE_METASTORE_FILE)"
+    echo -e "-w\tsql script for metastore refresh (default: $BIG_BENCH_REFRESH_METASTORE_FILE)"
+    echo -e "-y\tfile with additional user defined query parameters (global: $BIG_BENCH_QUERY_PARAMS_FILE)"
+    echo -e "-z\tfile with additional user defined engine settings (global: $BIG_BENCH_ENGINE_SETTINGS_FILE)"
+  fi
+}
+
+runModule () {
+  #check input parameters
+  if [ "$BIG_BENCH_NUMBER_OF_PARALLEL_STREAMS" -le 0 ]
+  then
+    echo "The number of parallel streams -s must be greater than 0"
+    return 1
+  fi
+
+  "${BIG_BENCH_BIN_DIR}/bigBench" cleanLogs -U $LIST_OF_USER_OPTIONS
+  "$BIG_BENCH_JAVA" -classpath "${BIG_BENCH_TOOLS_DIR}/RunBigBench.jar:${BIG_BENCH_DRIVER_EXTRA_CLASSPATH}" io.bigdatabenchmark.v1.driver.RunBigBench
+  "${BIG_BENCH_BIN_DIR}/bigBench" logEnvInformation -U $LIST_OF_USER_OPTIONS
+  "${BIG_BENCH_BIN_DIR}/bigBench" dataRedundancyInformation -U $LIST_OF_USER_OPTIONS
+  "${BIG_BENCH_BIN_DIR}/bigBench" zipLogs -U $LIST_OF_USER_OPTIONS
+  return $?
+}

@@ -1,0 +1,5 @@
+table FlatStr {
+  str:string;
+}
+
+root_type FlatStr;

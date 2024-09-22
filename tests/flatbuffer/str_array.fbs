@@ -1,0 +1,11 @@
+
+table String{
+  sentiment: string;
+  word: string;
+  sentence: string;
+}
+
+table StringArray {
+  arrays: [String];
+}
+root_type StringArray;

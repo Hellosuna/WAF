@@ -1,0 +1,9 @@
+# wasm_engine etension
+comment = 'wasm runtime engine based on wamr'
+default_version = '1.0'
+module_pathname = '$libdir/wasm_engine'
+relocatable = true
+
+# CREATE EXTENSION wasm_engine;
+# DROP EXTENSION wasm_engine;
+# select wasm_engine_int();

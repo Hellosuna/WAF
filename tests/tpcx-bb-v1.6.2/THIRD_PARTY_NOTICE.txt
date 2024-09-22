@@ -1,0 +1,31 @@
+------------------------------------------------------
+
+ADDITIONAL 3RD PARTY LICENSES ARE AT the following directories.  See the text below for more details on what these cover.
+   data-generator/LICENSE.txt
+   distributions/Resources/LICENSE
+
+------------------------------------------------------
+
+
+A number of Big Data Benchmark for BigBench Specification queries are derived from TPC-DS and as such are not comparable to a published TPC-DS result.
+
+This kit contains a restricted version of the Parallel Data Generation Framework (PDGF), which is used to generate the benchmark data set. PDGF is a product of bankmark UG (haftungsbeschraenkt). License terms for PDGF can be found in the data-generator directory. See
+   data-generator/LICENSE.txt
+   data-generator/THIRD-PARTY-LICENSE.txt
+   data-generator/*
+
+This kit redistributes the Apache 2 licensed OpenNLP (https://opennlp.apache.org/) ingredients opennlp-maxent-3.0.3.jar and opennlp-tools-1.9.3.jar that are unmodified distributions of these versions acquired in binary form from the maven mirror.  See
+   distributions/Resources/opennlp-maxent-3.0.3.jar
+   distributions/Resources/opennlp-tools-1.9.3.jar
+   distributions/Resources/LICENSE
+   distributions/Resources/NOTICE
+
+At compile time, this kit requires several Apache projects that provide API import bindings for ingredients provided by Hadoop implementations.  These libraries are not restributed with TPCx-BB but we enumerate them here for completeness.  All of these are Apache 2 licensed (distributions/Resources/LICENSE).
+   org.apache.commons.cli (v1.2)
+   org.apache.log4j (v1.2)
+   org.apache.spark (v2.4/v2.1/2.3/1.6)
+   org.apache.hive (v3.1/2.1/2.3/1.1)
+   org.apache.hadoop (v3.1/2.6)
+   com.hortonworks.hwc (v1.0)
+
+In addition, the benchmark bases a few file handling code templates on org.apache.hadoop samples.  These are annotated in src/HadoopClusterExec_src.jar at io/bigdatabenchmark/hadoop/HadoopClusterExec.java.  These samples are Apache 2 licensed (distributions/Resources/LICENSE)

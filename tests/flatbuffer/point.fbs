@@ -1,0 +1,6 @@
+table FlatPoint {
+  x:double;
+  y:double;
+}
+
+root_type FlatPoint;
