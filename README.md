@@ -1,5 +1,5 @@
- **Environment Setup**\
-1. wasi-sdk:\
+ **Environment Setup**
+*wasi-sdk*
 https://github.com/WebAssembly/wasi-sdk \
-2.wamr：\
+*wamr*
 https://github.com/bytecodealliance/wasm-micro-runtime\
